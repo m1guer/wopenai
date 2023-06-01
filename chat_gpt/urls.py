@@ -18,7 +18,7 @@ from django.contrib import admin
 from django.urls import path, include
 from rest_framework import routers
 
-from openai.viewsets.viewsets import OpenAiViewSet
+from openai_prompt.viewsets.viewsets import OpenAiViewSet
 
 router = routers.DefaultRouter()
 router.register(r'openai', OpenAiViewSet, basename="openai")
