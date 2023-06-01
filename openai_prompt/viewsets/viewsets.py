@@ -6,6 +6,8 @@ import requests
 import os
 import openai
 
+from openai_prompt.models import ChatHistory, OpenaiModel
+
 
 class OpenAiViewSet(viewsets.ViewSet):
     def _init_(self):
@@ -15,21 +17,23 @@ class OpenAiViewSet(viewsets.ViewSet):
         openai.api_key = os.getenv("OPEN_API_KEY")
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[message],
+            messages=message,
             max_tokens=3800,
             stop=None,
             temperature=0.7
         )
+        print(message)
         for choice in response.choices:
             if "message" in choice and "content" in choice.message:
                 return choice.message.content
+        message = ""
         return response.choices[0].message.content
 
     def clear_responses(self):
         self.message_responses = {}
 
     def sent_message(self, numero, message):
-        url = "https://graph.facebook.com/v16.0/121601520926198/messages"
+        url = "https://graph.facebook.com/v16.0/102030192918232/messages"
         headers = {
             "Authorization": "Bearer EAAQvHeAZBZA4MBAM1LTSewCVZAbgiIAaHzdbuvVqBcA40gFml6rBMdnwd2ZBDy7lWwQV8kgqT67MXg40A76bZBbCZCAG0V2NirVxupqJr8pqweOs7kCvhP2MDbgWyQgZCYzGB8oHNIgOR6r8TbZCy070W5Jds0zBOYlWfb4YC1FJ785HIdWnlbY99vy0ixdRjJWFOQktGVLohwZDZD",
             "Content-Type": "application/json",
@@ -48,22 +52,89 @@ class OpenAiViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=['get', 'post'])
     def webhook(self, request, *args, **kwargs):
-        message_status = False  # if ==True message was read.
         data_json = request.data
+        conversation_id = data_json["entry"][0]["id"]
+
+        message_log = [
+            {"role": "system", "content": "You are a helpful assistant."}
+        ]
+        openaiModel = OpenaiModel()
         if request.method == 'GET':
             hub_challenge = request.query_params.get('hub.challenge')
             data = json.loads(hub_challenge)
             return Response(data)
         if request.method == 'POST':
-            while message_status == False:
-                if 'contacts' in data_json['entry'][0]['changes'][0]['value']:
+            if 'contacts' in data_json['entry'][0]['changes'][0]['value']:
+                message_id = data_json['entry'][0]['changes'][0]['value']['messages'][0]['id']
+                queryset = OpenaiModel.objects.filter(
+                    conversation_id=conversation_id)
+                if queryset.exists():
                     numero = data_json['entry'][0]['changes'][0]['value']['contacts'][0]["wa_id"]
                     prompt = data_json['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
-                    array_message = {"role": "user", "content": prompt}
-                    message = self.start_prompt(message=array_message)
-                    self.sent_message(numero, message)
-                    array_message = ""
-                    return Response("ok")
+                    message_id = data_json['entry'][0]['changes'][0]['value']['messages'][0]['id']
+                    message_queryset = OpenaiModel.objects.filter(
+                        waid=message_id)
+                    if message_queryset.exists():
+                        return Response({'sent': 'message already sent'})
+                    else:
+                        message_log.append(
+                            {"role": "user", "content": prompt})
+                        print("AAAAAAAAAAAAAAAAA")
+                        queryset_chat_infos = OpenaiModel.objects.get(
+                            conversation_id=conversation_id)
+
+                        chat_history = ChatHistory()
+                        for message in message_log:
+                            chat_history.conversation = queryset_chat_infos
+                            chat_history.role = message["role"]
+                            chat_history.content = message["content"]
+                            chat_history.save()
+                        message_logs_query = ChatHistory.objects.filter(
+                            conversation_id=queryset_chat_infos)
+                        new_messages_log = []
+                        for chat_messages in message_logs_query:
+                            role = chat_messages.role
+                            content = chat_messages.content
+                            new_messages_log.append(
+                                {"role": role, "content": content})
+                        message = self.start_prompt(message=new_messages_log)
+                        new_messages_log.append(
+                            {"role": "assistant", "content": message})
+                        chat_history.conversation = queryset_chat_infos
+                        chat_history.role = "assistant"
+                        chat_history.content = message
+                        chat_history.save()
+                        self.sent_message(numero, message)
+                        return Response("OK")
                 else:
-                    content = {'messages update': 'message update status'}
-                    return Response(content, status=status.HTTP_200_OK)
+                    numero = data_json['entry'][0]['changes'][0]['value']['contacts'][0]["wa_id"]
+                    prompt = data_json['entry'][0]['changes'][0]['value']['messages'][0]['text']['body']
+                    if queryset.exists():
+                        return Response({"message already send."})
+                    elif queryset.none:
+                        message_log.append(
+                            {"role": "user", "content": prompt})
+                        message = self.start_prompt(message=message_log)
+                        message_log.append(
+                            {"role": "assistant", "content": message})
+                        self.sent_message(numero, message)
+                        openaiModel.waid = message_id
+                        openaiModel.conversation_id = conversation_id
+                        openaiModel.save()
+
+                        queryset_chat_infos = OpenaiModel.objects.get(
+                            waid=message_id)
+
+                        for message in message_log:
+                            chat_history = ChatHistory()
+                            chat_history.conversation = queryset_chat_infos
+                            chat_history.role = message["role"]
+                            chat_history.content = message["content"]
+                            chat_history.save()
+
+                        return Response("ok")
+                    else:
+                        content = {'messages update': 'message update status'}
+                        return Response(content, status=status.HTTP_200_OK)
+            else:
+                return Response("OK")
