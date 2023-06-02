@@ -1,5 +1,6 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
+from django.shortcuts import get_object_or_404
 from rest_framework.decorators import action
 import json
 import requests
@@ -16,7 +17,7 @@ class OpenAiViewSet(viewsets.ViewSet):
     def start_prompt(self, message):
         openai.api_key = os.getenv("OPEN_API_KEY")
         response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
+            model="gpt-3.5-turbo-0301",
             messages=message,
             max_tokens=3800,
             stop=None,
@@ -35,7 +36,7 @@ class OpenAiViewSet(viewsets.ViewSet):
     def sent_message(self, numero, message):
         url = "https://graph.facebook.com/v16.0/102030192918232/messages"
         headers = {
-            "Authorization": "Bearer EAAQvHeAZBZA4MBAM1LTSewCVZAbgiIAaHzdbuvVqBcA40gFml6rBMdnwd2ZBDy7lWwQV8kgqT67MXg40A76bZBbCZCAG0V2NirVxupqJr8pqweOs7kCvhP2MDbgWyQgZCYzGB8oHNIgOR6r8TbZCy070W5Jds0zBOYlWfb4YC1FJ785HIdWnlbY99vy0ixdRjJWFOQktGVLohwZDZD",
+            "Authorization": "Bearer EAAQvHeAZBZA4MBAJEVzTMiIMKjlT5YO5hGPxEre7357ENmFBIE3dqxOKo4B0KFJyRzYtTL2eU97NAGcV0PgiISH7UmGdECsXr7woLONkg061gIMznUyjWbWZCHrGycr7rNoMOl9GePXrbLLZCd99rCuzzvu0EH0HPoa9DuPh1A7ZAMx7qhBYix64XPIpg0qEcVZBSmq0gFdwZDZD",
             "Content-Type": "application/json",
         }
         body = {
